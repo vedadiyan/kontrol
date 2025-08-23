@@ -20,12 +20,7 @@ func (server *Server) ListenAndServe(addr string) {
 
 func (server *Server) HandleFunc(pattern string, logic pipeline.Filter) {
 	server.mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
-		httpResponse := new(http.Response)
-		httpResponse.Proto = r.Proto
-		httpResponse.ProtoMajor = r.ProtoMajor
-		httpResponse.ProtoMinor = r.ProtoMinor
-		httpResponse.Header = make(http.Header)
-		response := pipeline.DefaultResponseNode(httpResponse)
+		response := pipeline.DefaultResponseNode(new(pipeline.Response))
 		if err := logic.Do(context.TODO(), response, r); err != nil {
 			log.Println(err)
 		}
@@ -34,6 +29,8 @@ func (server *Server) HandleFunc(pattern string, logic pipeline.Filter) {
 			response = next
 		}
 
-		response.Current().Write(w)
+		response.Current().Header.Write(w)
+		response.Current().Trailer.Write(w)
+		w.Write(response.Current().Body)
 	})
 }

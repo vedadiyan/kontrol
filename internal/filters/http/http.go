@@ -74,19 +74,21 @@ func (f *HTTPFilter) Do(ctx context.Context, responseNode pipeline.ResponseNode,
 
 // executeForeground performs a synchronous HTTP request and processes the response.
 func (f *HTTPFilter) executeForeground(ctx context.Context, responseNode pipeline.ResponseNode, request *http.Request) error {
-	response, err := performHTTPRequest(ctx, f.targetURL, request)
+	httpResponse, err := performHTTPRequest(ctx, f.targetURL, request)
+	if err != nil {
+		return f.handleError(ctx, responseNode, request, err)
+	}
+	response, err := pipeline.ToResponse(*httpResponse)
 	if err != nil {
 		return f.handleError(ctx, responseNode, request, err)
 	}
 
-	if !isSuccessStatusCode(response.StatusCode) {
-		httpErr := newHTTPError(f.targetURL.String(), response.StatusCode)
-		return f.handleError(ctx, responseNode, request, httpErr)
+	if !isSuccessStatusCode(httpResponse.StatusCode) {
+		httpErr := newHTTPError(f.targetURL.String(), httpResponse.StatusCode)
+		return f.handleError(ctx, responseNode.Set(response), request, httpErr)
 	}
 
-	// Continue to next filter with the new response
-	nextNode := responseNode.Set(response)
-	return f.Next().Do(ctx, nextNode, request)
+	return f.Next().Do(ctx, responseNode.Set(response), request)
 }
 
 // ============================================================================
@@ -100,14 +102,19 @@ func (f *HTTPFilter) executeBackground(ctx context.Context, responseNode pipelin
 
 	// Execute HTTP request in background
 	go func() {
-		response, err := performHTTPRequest(ctx, f.targetURL, request)
+		httpResponse, err := performHTTPRequest(ctx, f.targetURL, request)
+		if err != nil {
+			resultChannel <- f.handleError(ctx, responseNode, request, err)
+			return
+		}
+		response, err := pipeline.ToResponse(*httpResponse)
 		if err != nil {
 			resultChannel <- f.handleError(ctx, responseNode, request, err)
 			return
 		}
 
-		if !isSuccessStatusCode(response.StatusCode) {
-			httpErr := newHTTPError(f.targetURL.String(), response.StatusCode)
+		if !isSuccessStatusCode(httpResponse.StatusCode) {
+			httpErr := newHTTPError(f.targetURL.String(), httpResponse.StatusCode)
 			resultChannel <- f.handleError(ctx, responseNode, request, httpErr)
 			return
 		}

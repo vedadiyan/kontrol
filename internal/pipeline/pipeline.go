@@ -16,11 +16,18 @@ package pipeline
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"time"
 )
 
 type BackgroundFilterId string
+
+type Response struct {
+	Body    []byte
+	Header  http.Header
+	Trailer http.Header
+}
 
 // ============================================================================
 // Core Interfaces
@@ -31,8 +38,8 @@ type BackgroundFilterId string
 type ResponseNode interface {
 	Prev() ResponseNode
 	Next() ResponseNode
-	Current() *http.Response
-	Set(rs *http.Response) ResponseNode
+	Current() *Response
+	Set(rs *Response) ResponseNode
 }
 
 // Filter defines a processing unit in the pipeline that can be chained
@@ -82,7 +89,7 @@ type AbstractFilter struct {
 type responseNode struct {
 	previous ResponseNode
 	next     ResponseNode
-	current  *http.Response
+	current  *Response
 }
 
 // ============================================================================
@@ -90,7 +97,7 @@ type responseNode struct {
 // ============================================================================
 
 // DefaultResponseNode creates a new ResponseNode with the given HTTP response.
-func DefaultResponseNode(r *http.Response) ResponseNode {
+func DefaultResponseNode(r *Response) ResponseNode {
 	out := new(responseNode)
 	out.current = r
 	return out
@@ -111,13 +118,13 @@ func (r *responseNode) Next() ResponseNode {
 }
 
 // Current returns the HTTP response stored in this node.
-func (r *responseNode) Current() *http.Response {
+func (r *responseNode) Current() *Response {
 	return r.current
 }
 
 // Set updates the current HTTP response and creates a new next node,
 // returning the newly created node.
-func (r *responseNode) Set(rs *http.Response) ResponseNode {
+func (r *responseNode) Set(rs *Response) ResponseNode {
 	r.current = rs
 	r.next = &responseNode{r, nil, nil}
 	return r.next
@@ -155,4 +162,17 @@ func (f *AbstractFilter) Fail() Filter {
 // Next returns the next filter in the processing chain.
 func (f *AbstractFilter) Next() Filter {
 	return f.onNext
+}
+
+func ToResponse(rs http.Response) (*Response, error) {
+	body, err := io.ReadAll(rs.Body)
+	if err != nil {
+		return nil, err
+	}
+	defer rs.Body.Close()
+	out := new(Response)
+	out.Body = body
+	out.Header = rs.Header.Clone()
+	out.Trailer = rs.Trailer.Clone()
+	return out, nil
 }
