@@ -15,7 +15,7 @@ func main() {
 	if err != nil {
 		log.Fatalln(err)
 	}
-	filter := http.New(url, nil)
+	filter := http.New("test", url, nil)
 	filter.OnNext(term.New(filter))
 	filter.OnFail(term.New(filter))
 

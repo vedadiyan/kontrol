@@ -20,6 +20,8 @@ import (
 	"time"
 )
 
+type AsyncFilteId string
+
 // ============================================================================
 // Core Interfaces
 // ============================================================================
@@ -38,6 +40,7 @@ type ResponseNode interface {
 type Filter interface {
 	Prev() Filter
 	Do(context.Context, ResponseNode, *http.Request) error
+	Id() string
 }
 
 // ============================================================================
@@ -64,6 +67,7 @@ type FilterOption func(*FilterOptions)
 type AbstractFilter struct {
 	Filter
 	FilterOptions
+	FilterId string
 	Previous Filter // The previous filter in the chain (exported for external setup)
 	onFail   Filter // Filter to execute on failure
 	onNext   Filter // Filter to execute next in the chain
@@ -122,6 +126,11 @@ func (r *responseNode) Set(rs *http.Response) ResponseNode {
 // ============================================================================
 // AbstractFilter Methods
 // ============================================================================
+
+// Id returns the filter Id.
+func (f *AbstractFilter) Id() string {
+	return f.FilterId
+}
 
 // Prev returns the previous filter in the chain.
 func (f *AbstractFilter) Prev() Filter {
