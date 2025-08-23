@@ -83,7 +83,7 @@ func (f *HTTPFilter) executeForeground(ctx context.Context, responseNode pipelin
 		return f.handleError(ctx, responseNode, request, err)
 	}
 
-	if !isSuccessStatusCode(httpResponse.StatusCode) {
+	if !isSuccessStatusCode(response.StatusCode) {
 		httpErr := newHTTPError(f.targetURL.String(), httpResponse.StatusCode)
 		return f.handleError(ctx, responseNode.Set(response), request, httpErr)
 	}
@@ -113,7 +113,7 @@ func (f *HTTPFilter) executeBackground(ctx context.Context, responseNode pipelin
 			return
 		}
 
-		if !isSuccessStatusCode(httpResponse.StatusCode) {
+		if !isSuccessStatusCode(response.StatusCode) {
 			httpErr := newHTTPError(f.targetURL.String(), httpResponse.StatusCode)
 			resultChannel <- f.handleError(ctx, responseNode, request, httpErr)
 			return
