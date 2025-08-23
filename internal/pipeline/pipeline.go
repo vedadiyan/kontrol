@@ -4,7 +4,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//	http://www.apache.org/licenses/LICENSE-2.0
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -17,6 +17,7 @@ package pipeline
 import (
 	"context"
 	"net/http"
+	"time"
 )
 
 // ============================================================================
@@ -40,6 +41,20 @@ type Filter interface {
 }
 
 // ============================================================================
+// Filter Configuration
+// ============================================================================
+
+// FilterOptions holds configuration options for filter creation and setup.
+type FilterOptions struct {
+	Async   bool          // Whether the filter should execute asynchronously
+	Timeout time.Duration // Maximum execution time for the filter
+}
+
+// FilterOption is a function type for configuring FilterOptions using the
+// functional options pattern.
+type FilterOption func(*FilterOptions)
+
+// ============================================================================
 // Filter Implementation
 // ============================================================================
 
@@ -48,6 +63,7 @@ type Filter interface {
 // the Do method to be implemented by concrete filter types.
 type AbstractFilter struct {
 	Filter
+	FilterOptions
 	Previous Filter // The previous filter in the chain (exported for external setup)
 	onFail   Filter // Filter to execute on failure
 	onNext   Filter // Filter to execute next in the chain

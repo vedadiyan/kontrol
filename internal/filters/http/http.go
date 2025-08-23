@@ -14,7 +14,7 @@ type (
 	}
 )
 
-func New(f pipeline.Filter) *Http {
+func New(f pipeline.Filter, opts ...pipeline.FilterOption) *Http {
 	out := new(Http)
 	out.Previous = f
 	return out
