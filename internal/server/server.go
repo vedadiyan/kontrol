@@ -14,6 +14,10 @@ type (
 	}
 )
 
+func (server *Server) ListenAndServe(addr string) {
+	http.ListenAndServe(addr, &server.mux)
+}
+
 func (server *Server) HandleFunc(pattern string, logic pipeline.Filter) {
 	server.mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 		httpResponse := new(http.Response)
@@ -25,9 +29,11 @@ func (server *Server) HandleFunc(pattern string, logic pipeline.Filter) {
 		if err := logic.Do(context.TODO(), response, r); err != nil {
 			log.Println(err)
 		}
-		for response.Next() != nil {
-			response = response.Next()
+
+		for next := response.Next(); next != nil && next.Current() != nil; {
+			response = next
 		}
+
 		response.Current().Write(w)
 	})
 }
