@@ -17,6 +17,7 @@ package http
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -86,6 +87,9 @@ func TestNew(t *testing.T) {
 		if filter.Previous != previousFilter {
 			t.Error("Expected Previous filter to be set correctly")
 		}
+
+		// Verify it implements the Filter interface
+		var _ pipeline.Filter = filter
 	})
 
 	t.Run("applies options to embedded struct", func(t *testing.T) {
@@ -101,6 +105,230 @@ func TestNew(t *testing.T) {
 		}
 		if filter.FilterOptions.Timeout != 5*time.Second {
 			t.Errorf("Expected Timeout 5s, got %v", filter.FilterOptions.Timeout)
+		}
+	})
+}
+
+// ============================================================================
+// Do Function Tests
+// ============================================================================
+
+func TestDo(t *testing.T) {
+	t.Run("chooses foreground execution by default", func(t *testing.T) {
+		server := createTestServer(200, "success", 100*time.Millisecond)
+		defer server.Close()
+
+		targetURL, _ := url.Parse(server.URL)
+		filter := New("fg-filter", targetURL, nil)
+
+		nextCalled := false
+		mockNext := &mockFilter{
+			doFunc: func(ctx context.Context, rn pipeline.ResponseNode, req *http.Request) error {
+				nextCalled = true
+				if rn.Current().StatusCode != 200 {
+					t.Errorf("Expected status 200, got %d", rn.Current().StatusCode)
+				}
+				return nil
+			},
+		}
+		filter.OnNext(mockNext)
+
+		start := time.Now()
+		ctx := context.Background()
+		req := httptest.NewRequest("GET", "/", nil)
+		responseNode := &mockResponseNode{}
+
+		err := filter.Do(ctx, responseNode, req)
+		duration := time.Since(start)
+
+		if err != nil {
+			t.Errorf("Foreground execution failed: %v", err)
+		}
+		if duration < 90*time.Millisecond {
+			t.Error("Foreground execution should block until complete")
+		}
+		if !nextCalled {
+			t.Error("Expected next filter to be called")
+		}
+	})
+
+	t.Run("chooses background execution when configured", func(t *testing.T) {
+		server := createTestServer(200, "OK", 100*time.Millisecond)
+		defer server.Close()
+
+		targetURL, _ := url.Parse(server.URL)
+
+		backgroundOpt := func(opts *pipeline.FilterOptions) {
+			opts.Background = true
+		}
+		filter := New("bg-filter", targetURL, nil, backgroundOpt)
+
+		nextCalled := false
+		mockNext := &mockFilter{
+			doFunc: func(ctx context.Context, rn pipeline.ResponseNode, req *http.Request) error {
+				nextCalled = true
+				return nil
+			},
+		}
+		filter.OnNext(mockNext)
+
+		start := time.Now()
+		ctx := context.Background()
+		req := httptest.NewRequest("GET", "/", nil)
+		responseNode := &mockResponseNode{}
+
+		err := filter.Do(ctx, responseNode, req)
+		duration := time.Since(start)
+
+		if err != nil {
+			t.Errorf("Background execution failed: %v", err)
+		}
+		if duration > 50*time.Millisecond {
+			t.Error("Background execution should not block")
+		}
+		if !nextCalled {
+			t.Error("Expected next filter to be called immediately")
+		}
+	})
+
+	t.Run("handles different HTTP methods", func(t *testing.T) {
+		methods := []string{"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"}
+
+		for _, method := range methods {
+			t.Run(method, func(t *testing.T) {
+				server := createTestServer(200, "OK", 0)
+				defer server.Close()
+
+				targetURL, _ := url.Parse(server.URL)
+				filter := New("test-filter", targetURL, nil)
+				filter.OnNext(&mockFilter{})
+
+				ctx := context.Background()
+				req := httptest.NewRequest(method, "/", nil)
+				responseNode := &mockResponseNode{}
+
+				err := filter.Do(ctx, responseNode, req)
+				if err != nil {
+					t.Errorf("Method %s failed: %v", method, err)
+				}
+			})
+		}
+	})
+
+	t.Run("handles different success status codes", func(t *testing.T) {
+		successCodes := []int{200, 201, 202, 204, 206, 299}
+
+		for _, statusCode := range successCodes {
+			t.Run(fmt.Sprintf("status_%d", statusCode), func(t *testing.T) {
+				server := createTestServer(statusCode, "OK", 0)
+				defer server.Close()
+
+				targetURL, _ := url.Parse(server.URL)
+				filter := New("test-filter", targetURL, nil)
+
+				nextCalled := false
+				mockNext := &mockFilter{
+					doFunc: func(ctx context.Context, rn pipeline.ResponseNode, req *http.Request) error {
+						nextCalled = true
+						if rn.Current().StatusCode != statusCode {
+							t.Errorf("Expected status %d, got %d", statusCode, rn.Current().StatusCode)
+						}
+						return nil
+					},
+				}
+				filter.OnNext(mockNext)
+
+				ctx := context.Background()
+				req := httptest.NewRequest("GET", "/", nil)
+				responseNode := &mockResponseNode{}
+
+				err := filter.Do(ctx, responseNode, req)
+				if err != nil {
+					t.Errorf("Status %d should succeed, got error: %v", statusCode, err)
+				}
+				if !nextCalled {
+					t.Errorf("Expected next filter to be called for status %d", statusCode)
+				}
+			})
+		}
+	})
+
+	t.Run("handles client and server errors", func(t *testing.T) {
+		errorCodes := []int{400, 401, 403, 404, 500, 501, 502, 503}
+
+		for _, statusCode := range errorCodes {
+			t.Run(fmt.Sprintf("status_%d", statusCode), func(t *testing.T) {
+				server := createTestServer(statusCode, "Error", 0)
+				defer server.Close()
+
+				targetURL, _ := url.Parse(server.URL)
+
+				failCalled := false
+				mockFail := &mockFilter{
+					doFunc: func(context.Context, pipeline.ResponseNode, *http.Request) error {
+						failCalled = true
+						return errors.New("failure handled")
+					},
+				}
+
+				filter := New("test-filter", targetURL, nil)
+				filter.OnFail(mockFail)
+
+				ctx := context.Background()
+				req := httptest.NewRequest("GET", "/", nil)
+				responseNode := &mockResponseNode{}
+
+				err := filter.Do(ctx, responseNode, req)
+
+				if err == nil {
+					t.Errorf("Expected error for %d response", statusCode)
+				}
+				if !failCalled {
+					t.Errorf("Expected failure filter to be called for %d", statusCode)
+				}
+			})
+		}
+	})
+
+	t.Run("handles network errors", func(t *testing.T) {
+		targetURL, _ := url.Parse("http://127.0.0.1:1")
+		filter := New("test-filter", targetURL, nil)
+
+		ctx := context.Background()
+		req := httptest.NewRequest("GET", "/", nil)
+		responseNode := &mockResponseNode{}
+
+		err := filter.Do(ctx, responseNode, req)
+		if err == nil {
+			t.Error("Expected network error")
+		}
+	})
+
+	t.Run("preserves request headers", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get("Authorization") != "Bearer token123" {
+				t.Error("Expected Authorization header to be preserved")
+			}
+			if r.Header.Get("Content-Type") != "application/json" {
+				t.Error("Expected Content-Type header to be preserved")
+			}
+			w.WriteHeader(200)
+		}))
+		defer server.Close()
+
+		targetURL, _ := url.Parse(server.URL)
+		filter := New("test-filter", targetURL, nil)
+		filter.OnNext(&mockFilter{})
+
+		ctx := context.Background()
+		req := httptest.NewRequest("POST", "/api/data", nil)
+		req.Header.Set("Authorization", "Bearer token123")
+		req.Header.Set("Content-Type", "application/json")
+		responseNode := &mockResponseNode{}
+
+		err := filter.Do(ctx, responseNode, req)
+		if err != nil {
+			t.Errorf("Request with headers failed: %v", err)
 		}
 	})
 }
@@ -171,8 +399,7 @@ func TestExecuteForeground(t *testing.T) {
 	})
 
 	t.Run("handles network errors", func(t *testing.T) {
-		// Use a port that's guaranteed to be closed to trigger immediate connection error
-		targetURL, _ := url.Parse("http://127.0.0.1:1") // Port 1 is typically not used
+		targetURL, _ := url.Parse("http://127.0.0.1:1")
 		filter := New("test-id", targetURL, nil)
 
 		failCalled := false
@@ -276,7 +503,6 @@ func TestExecuteBackground(t *testing.T) {
 		if channel, ok := channelValue.(chan any); ok {
 			select {
 			case result := <-channel:
-				// The result should be an error from handleError
 				if resultErr, isError := result.(error); isError {
 					if resultErr == nil {
 						t.Error("Expected error result from channel")
@@ -298,8 +524,7 @@ func TestExecuteBackground(t *testing.T) {
 	})
 
 	t.Run("handles network errors in goroutine", func(t *testing.T) {
-		// Use a port that's guaranteed to be closed to trigger immediate connection error
-		targetURL, _ := url.Parse("http://127.0.0.1:1") // Port 1 is typically not used
+		targetURL, _ := url.Parse("http://127.0.0.1:1")
 		filter := New("test-id", targetURL, nil)
 
 		failCalled := false
@@ -354,7 +579,6 @@ func TestExecuteBackground(t *testing.T) {
 		contextChecked := false
 		mockNext := &mockFilter{
 			doFunc: func(ctx context.Context, rn pipeline.ResponseNode, req *http.Request) error {
-				// Verify context has the channel
 				if ctx.Value(pipeline.BackgroundFilterId("bg-test")) == nil {
 					t.Error("Expected context to contain background filter channel")
 				}
@@ -368,7 +592,6 @@ func TestExecuteBackground(t *testing.T) {
 		req := httptest.NewRequest("GET", "/", nil)
 		responseNode := &mockResponseNode{}
 
-		// executeBackground modifies the context and passes it to the next filter
 		err := filter.executeBackground(ctx, responseNode, req)
 		if err != nil {
 			t.Errorf("Expected no error, got %v", err)
@@ -433,14 +656,14 @@ func TestIsSuccessStatusCode(t *testing.T) {
 		code     int
 		expected bool
 	}{
-		{100, false}, // Informational
-		{199, false}, // Just below 2xx
-		{200, true},  // OK
-		{201, true},  // Created
-		{299, true},  // End of 2xx
-		{300, false}, // Redirection
-		{404, false}, // Client error
-		{500, false}, // Server error
+		{100, false},
+		{199, false},
+		{200, true},
+		{201, true},
+		{299, true},
+		{300, false},
+		{404, false},
+		{500, false},
 	}
 
 	for _, test := range tests {
@@ -473,7 +696,6 @@ func TestPerformHTTPRequest(t *testing.T) {
 			t.Error("Expected response, got nil")
 		}
 
-		// Verify original request wasn't modified
 		if originalReq.URL.String() != originalURL {
 			t.Error("Original request URL was modified")
 		}
@@ -566,4 +788,451 @@ func TestNewHTTPError(t *testing.T) {
 			}
 		}
 	})
+}
+
+// ============================================================================
+// Benchmark Helpers
+// ============================================================================
+
+type benchmarkFilter struct {
+	pipeline.AbstractFilter
+}
+
+func (b *benchmarkFilter) Do(ctx context.Context, rn pipeline.ResponseNode, req *http.Request) error {
+	return nil
+}
+
+type benchmarkResponseNode struct {
+	current *http.Response
+}
+
+func (b *benchmarkResponseNode) Prev() pipeline.ResponseNode { return nil }
+func (b *benchmarkResponseNode) Next() pipeline.ResponseNode { return nil }
+func (b *benchmarkResponseNode) Current() *http.Response     { return b.current }
+func (b *benchmarkResponseNode) Set(rs *http.Response) pipeline.ResponseNode {
+	return &benchmarkResponseNode{current: rs}
+}
+
+func createBenchmarkServer(statusCode int, responseSize int, delay time.Duration) *httptest.Server {
+	response := make([]byte, responseSize)
+	for i := range response {
+		response[i] = 'a' // Fill with 'a' characters
+	}
+
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if delay > 0 {
+			time.Sleep(delay)
+		}
+		w.WriteHeader(statusCode)
+		w.Write(response)
+	}))
+}
+
+// ============================================================================
+// Constructor Benchmarks
+// ============================================================================
+
+func BenchmarkNew(b *testing.B) {
+	targetURL, _ := url.Parse("https://api.example.com")
+	previousFilter := &benchmarkFilter{}
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		_ = New("benchmark-filter", targetURL, previousFilter)
+	}
+}
+
+func BenchmarkNewWithOptions(b *testing.B) {
+	targetURL, _ := url.Parse("https://api.example.com")
+	previousFilter := &benchmarkFilter{}
+
+	backgroundOpt := func(opts *pipeline.FilterOptions) {
+		opts.Background = true
+		opts.Timeout = 30 * time.Second
+	}
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		_ = New("benchmark-filter", targetURL, previousFilter, backgroundOpt)
+	}
+}
+
+// ============================================================================
+// Foreground Execution Benchmarks
+// ============================================================================
+
+func BenchmarkExecuteForeground_Success(b *testing.B) {
+	server := createBenchmarkServer(200, 1024, 0) // 1KB response
+	defer server.Close()
+
+	targetURL, _ := url.Parse(server.URL)
+	filter := New("benchmark-filter", targetURL, nil)
+	filter.OnNext(&benchmarkFilter{})
+
+	ctx := context.Background()
+	req := httptest.NewRequest("GET", "/", nil)
+	responseNode := &benchmarkResponseNode{}
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		filter.executeForeground(ctx, responseNode, req)
+	}
+}
+
+func BenchmarkExecuteForeground_SmallResponse(b *testing.B) {
+	server := createBenchmarkServer(200, 100, 0) // 100 bytes
+	defer server.Close()
+
+	targetURL, _ := url.Parse(server.URL)
+	filter := New("benchmark-filter", targetURL, nil)
+	filter.OnNext(&benchmarkFilter{})
+
+	ctx := context.Background()
+	req := httptest.NewRequest("GET", "/", nil)
+	responseNode := &benchmarkResponseNode{}
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		filter.executeForeground(ctx, responseNode, req)
+	}
+}
+
+func BenchmarkExecuteForeground_LargeResponse(b *testing.B) {
+	server := createBenchmarkServer(200, 10*1024, 0) // 10KB response
+	defer server.Close()
+
+	targetURL, _ := url.Parse(server.URL)
+	filter := New("benchmark-filter", targetURL, nil)
+	filter.OnNext(&benchmarkFilter{})
+
+	ctx := context.Background()
+	req := httptest.NewRequest("GET", "/", nil)
+	responseNode := &benchmarkResponseNode{}
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		filter.executeForeground(ctx, responseNode, req)
+	}
+}
+
+func BenchmarkExecuteForeground_WithLatency(b *testing.B) {
+	server := createBenchmarkServer(200, 1024, 10*time.Millisecond) // 10ms latency
+	defer server.Close()
+
+	targetURL, _ := url.Parse(server.URL)
+	filter := New("benchmark-filter", targetURL, nil)
+	filter.OnNext(&benchmarkFilter{})
+
+	ctx := context.Background()
+	req := httptest.NewRequest("GET", "/", nil)
+	responseNode := &benchmarkResponseNode{}
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		filter.executeForeground(ctx, responseNode, req)
+	}
+}
+
+// ============================================================================
+// Background Execution Benchmarks
+// ============================================================================
+
+func BenchmarkExecuteBackground_Success(b *testing.B) {
+	server := createBenchmarkServer(200, 1024, 0) // 1KB response
+	defer server.Close()
+
+	targetURL, _ := url.Parse(server.URL)
+	filter := New("benchmark-filter", targetURL, nil)
+	filter.OnNext(&benchmarkFilter{})
+
+	ctx := context.Background()
+	req := httptest.NewRequest("GET", "/", nil)
+	responseNode := &benchmarkResponseNode{}
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		filter.executeBackground(ctx, responseNode, req)
+	}
+}
+
+func BenchmarkExecuteBackground_WithLatency(b *testing.B) {
+	server := createBenchmarkServer(200, 1024, 10*time.Millisecond) // 10ms latency
+	defer server.Close()
+
+	targetURL, _ := url.Parse(server.URL)
+	filter := New("benchmark-filter", targetURL, nil)
+	filter.OnNext(&benchmarkFilter{})
+
+	ctx := context.Background()
+	req := httptest.NewRequest("GET", "/", nil)
+	responseNode := &benchmarkResponseNode{}
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		filter.executeBackground(ctx, responseNode, req)
+	}
+}
+
+// ============================================================================
+// Public API Benchmarks
+// ============================================================================
+
+func BenchmarkDo_Foreground(b *testing.B) {
+	server := createBenchmarkServer(200, 1024, 0)
+	defer server.Close()
+
+	targetURL, _ := url.Parse(server.URL)
+	filter := New("benchmark-filter", targetURL, nil)
+	filter.OnNext(&benchmarkFilter{})
+
+	ctx := context.Background()
+	req := httptest.NewRequest("GET", "/", nil)
+	responseNode := &benchmarkResponseNode{}
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		filter.Do(ctx, responseNode, req)
+	}
+}
+
+func BenchmarkDo_Background(b *testing.B) {
+	server := createBenchmarkServer(200, 1024, 0)
+	defer server.Close()
+
+	backgroundOpt := func(opts *pipeline.FilterOptions) {
+		opts.Background = true
+	}
+
+	targetURL, _ := url.Parse(server.URL)
+	filter := New("benchmark-filter", targetURL, nil, backgroundOpt)
+	filter.OnNext(&benchmarkFilter{})
+
+	ctx := context.Background()
+	req := httptest.NewRequest("GET", "/", nil)
+	responseNode := &benchmarkResponseNode{}
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		filter.Do(ctx, responseNode, req)
+	}
+}
+
+// ============================================================================
+// HTTP Utilities Benchmarks
+// ============================================================================
+
+func BenchmarkPerformHTTPRequest(b *testing.B) {
+	server := createBenchmarkServer(200, 1024, 0)
+	defer server.Close()
+
+	targetURL, _ := url.Parse(server.URL)
+	req := httptest.NewRequest("GET", "/", nil)
+	ctx := context.Background()
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		performHTTPRequest(ctx, targetURL, req)
+	}
+}
+
+func BenchmarkPerformHTTPRequest_WithHeaders(b *testing.B) {
+	server := createBenchmarkServer(200, 1024, 0)
+	defer server.Close()
+
+	targetURL, _ := url.Parse(server.URL)
+	req := httptest.NewRequest("POST", "/", nil)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer token123")
+	req.Header.Set("User-Agent", "HTTPFilter/1.0")
+	req.Header.Set("X-Request-ID", "benchmark-request")
+
+	ctx := context.Background()
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		performHTTPRequest(ctx, targetURL, req)
+	}
+}
+
+func BenchmarkIsSuccessStatusCode(b *testing.B) {
+	statusCodes := []int{200, 201, 404, 500, 302, 204, 400, 503}
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		code := statusCodes[i%len(statusCodes)]
+		isSuccessStatusCode(code)
+	}
+}
+
+func BenchmarkNewHTTPError(b *testing.B) {
+	url := "https://api.example.com/endpoint"
+	statusCode := 404
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		newHTTPError(url, statusCode)
+	}
+}
+
+// ============================================================================
+// Error Handling Benchmarks
+// ============================================================================
+
+func BenchmarkHandleError_NoFailFilter(b *testing.B) {
+	filter := New("benchmark-filter", nil, nil)
+
+	ctx := context.Background()
+	responseNode := &benchmarkResponseNode{}
+	req := httptest.NewRequest("GET", "/", nil)
+	err := newHTTPError("https://example.com", 404)
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		filter.handleError(ctx, responseNode, req, err)
+	}
+}
+
+func BenchmarkHandleError_WithFailFilter(b *testing.B) {
+	filter := New("benchmark-filter", nil, nil)
+	filter.OnFail(&benchmarkFilter{})
+
+	ctx := context.Background()
+	responseNode := &benchmarkResponseNode{}
+	req := httptest.NewRequest("GET", "/", nil)
+	err := newHTTPError("https://example.com", 404)
+
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		filter.handleError(ctx, responseNode, req, err)
+	}
+}
+
+// ============================================================================
+// Comparative Benchmarks
+// ============================================================================
+
+func BenchmarkForegroundVsBackground(b *testing.B) {
+	server := createBenchmarkServer(200, 1024, 5*time.Millisecond) // 5ms latency
+	defer server.Close()
+
+	targetURL, _ := url.Parse(server.URL)
+
+	b.Run("Foreground", func(b *testing.B) {
+		filter := New("fg-benchmark", targetURL, nil)
+		filter.OnNext(&benchmarkFilter{})
+
+		ctx := context.Background()
+		req := httptest.NewRequest("GET", "/", nil)
+		responseNode := &benchmarkResponseNode{}
+
+		b.ResetTimer()
+
+		for i := 0; i < b.N; i++ {
+			filter.Do(ctx, responseNode, req)
+		}
+	})
+
+	b.Run("Background", func(b *testing.B) {
+		backgroundOpt := func(opts *pipeline.FilterOptions) {
+			opts.Background = true
+		}
+
+		filter := New("bg-benchmark", targetURL, nil, backgroundOpt)
+		filter.OnNext(&benchmarkFilter{})
+
+		ctx := context.Background()
+		req := httptest.NewRequest("GET", "/", nil)
+		responseNode := &benchmarkResponseNode{}
+
+		b.ResetTimer()
+
+		for i := 0; i < b.N; i++ {
+			filter.Do(ctx, responseNode, req)
+		}
+	})
+}
+
+func BenchmarkResponseSizes(b *testing.B) {
+	sizes := []struct {
+		name string
+		size int
+	}{
+		{"100B", 100},
+		{"1KB", 1024},
+		{"10KB", 10 * 1024},
+		{"100KB", 100 * 1024},
+		{"1MB", 1024 * 1024},
+	}
+
+	for _, size := range sizes {
+		b.Run(size.name, func(b *testing.B) {
+			server := createBenchmarkServer(200, size.size, 0)
+			defer server.Close()
+
+			targetURL, _ := url.Parse(server.URL)
+			filter := New("size-benchmark", targetURL, nil)
+			filter.OnNext(&benchmarkFilter{})
+
+			ctx := context.Background()
+			req := httptest.NewRequest("GET", "/", nil)
+			responseNode := &benchmarkResponseNode{}
+
+			b.ResetTimer()
+			b.SetBytes(int64(size.size))
+
+			for i := 0; i < b.N; i++ {
+				filter.Do(ctx, responseNode, req)
+			}
+		})
+	}
+}
+
+func BenchmarkLatencyImpact(b *testing.B) {
+	latencies := []struct {
+		name  string
+		delay time.Duration
+	}{
+		{"0ms", 0},
+		{"1ms", 1 * time.Millisecond},
+		{"5ms", 5 * time.Millisecond},
+		{"10ms", 10 * time.Millisecond},
+		{"50ms", 50 * time.Millisecond},
+	}
+
+	for _, lat := range latencies {
+		b.Run(lat.name, func(b *testing.B) {
+			server := createBenchmarkServer(200, 1024, lat.delay)
+			defer server.Close()
+
+			targetURL, _ := url.Parse(server.URL)
+			filter := New("latency-benchmark", targetURL, nil)
+			filter.OnNext(&benchmarkFilter{})
+
+			ctx := context.Background()
+			req := httptest.NewRequest("GET", "/", nil)
+			responseNode := &benchmarkResponseNode{}
+
+			b.ResetTimer()
+
+			for i := 0; i < b.N; i++ {
+				filter.Do(ctx, responseNode, req)
+			}
+		})
+	}
 }
