@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-type BackhroundFilterId string
+type BackgroundFilterId string
 
 // ============================================================================
 // Core Interfaces

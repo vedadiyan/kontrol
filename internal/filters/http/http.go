@@ -96,7 +96,7 @@ func (f *HTTPFilter) executeForeground(ctx context.Context, responseNode pipelin
 // executeBackground performs an asynchronous HTTP request using goroutines.
 func (f *HTTPFilter) executeBackground(ctx context.Context, responseNode pipeline.ResponseNode, request *http.Request) error {
 	resultChannel := make(chan any)
-	ctx = context.WithValue(ctx, pipeline.BackhroundFilterId(f.Id()), resultChannel)
+	ctx = context.WithValue(ctx, pipeline.BackgroundFilterId(f.Id()), resultChannel)
 
 	// Execute HTTP request in background
 	go func() {
