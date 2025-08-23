@@ -29,7 +29,7 @@ import (
 // ============================================================================
 
 // HTTPFilter is a pipeline filter that performs HTTP requests to a specified URL.
-// It supports both synchronous and asynchronous execution based on configuration.
+// It supports both foreground and background execution based on configuration.
 type HTTPFilter struct {
 	pipeline.AbstractFilter
 	targetURL *url.URL // The target URL for HTTP requests
@@ -59,21 +59,21 @@ func New(id string, targetURL *url.URL, previousFilter pipeline.Filter, opts ...
 // Filter Interface Implementation
 // ============================================================================
 
-// Do executes the HTTP filter, choosing between synchronous or asynchronous
+// Do executes the HTTP filter, choosing between foreground or background
 // execution based on the filter configuration.
 func (f *HTTPFilter) Do(ctx context.Context, responseNode pipeline.ResponseNode, request *http.Request) error {
-	if f.FilterOptions.Async {
-		return f.executeAsync(ctx, responseNode, request)
+	if f.FilterOptions.Background {
+		return f.executeBackground(ctx, responseNode, request)
 	}
-	return f.executeSync(ctx, responseNode, request)
+	return f.executeForeground(ctx, responseNode, request)
 }
 
 // ============================================================================
-// Synchronous Execution
+// Foreground Execution
 // ============================================================================
 
-// executeSync performs a synchronous HTTP request and processes the response.
-func (f *HTTPFilter) executeSync(ctx context.Context, responseNode pipeline.ResponseNode, request *http.Request) error {
+// executeForeground performs a synchronous HTTP request and processes the response.
+func (f *HTTPFilter) executeForeground(ctx context.Context, responseNode pipeline.ResponseNode, request *http.Request) error {
 	response, err := performHTTPRequest(ctx, f.targetURL, request)
 	if err != nil {
 		return f.handleError(ctx, responseNode, request, err)
@@ -90,13 +90,13 @@ func (f *HTTPFilter) executeSync(ctx context.Context, responseNode pipeline.Resp
 }
 
 // ============================================================================
-// Asynchronous Execution
+// Background Execution
 // ============================================================================
 
-// executeAsync performs an asynchronous HTTP request using goroutines.
-func (f *HTTPFilter) executeAsync(ctx context.Context, responseNode pipeline.ResponseNode, request *http.Request) error {
+// executeBackground performs an asynchronous HTTP request using goroutines.
+func (f *HTTPFilter) executeBackground(ctx context.Context, responseNode pipeline.ResponseNode, request *http.Request) error {
 	resultChannel := make(chan any)
-	ctx = context.WithValue(ctx, pipeline.AsyncFilteId(f.Id()), resultChannel)
+	ctx = context.WithValue(ctx, pipeline.BackhroundFilterId(f.Id()), resultChannel)
 
 	// Execute HTTP request in background
 	go func() {

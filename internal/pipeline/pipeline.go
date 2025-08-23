@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-type AsyncFilteId string
+type BackhroundFilterId string
 
 // ============================================================================
 // Core Interfaces
@@ -49,8 +49,8 @@ type Filter interface {
 
 // FilterOptions holds configuration options for filter creation and setup.
 type FilterOptions struct {
-	Async   bool          // Whether the filter should execute asynchronously
-	Timeout time.Duration // Maximum execution time for the filter
+	Background bool          // Whether the filter should execute in the background
+	Timeout    time.Duration // Maximum execution time for the filter
 }
 
 // FilterOption is a function type for configuring FilterOptions using the
