@@ -24,23 +24,11 @@ import (
 	"github.com/vedadiyan/kontrol/internal/pipeline"
 )
 
-// ============================================================================
-// HTTP Filter Implementation
-// ============================================================================
-
-// HTTPFilter is a pipeline filter that performs HTTP requests to a specified URL.
-// It supports both foreground and background execution based on configuration.
 type HTTPFilter struct {
 	pipeline.AbstractFilter
 	targetURL *url.URL // The target URL for HTTP requests
 }
 
-// ============================================================================
-// Constructor
-// ============================================================================
-
-// New creates a new HTTP filter with the specified target URL and
-// previous filter in the chain.
 func New(id string, targetURL *url.URL, previousFilter pipeline.Filter, opts ...pipeline.FilterOption) *HTTPFilter {
 	filter := new(HTTPFilter)
 	filter.FilterId = id
@@ -55,12 +43,6 @@ func New(id string, targetURL *url.URL, previousFilter pipeline.Filter, opts ...
 	return filter
 }
 
-// ============================================================================
-// Filter Interface Implementation
-// ============================================================================
-
-// Do executes the HTTP filter, choosing between foreground or background
-// execution based on the filter configuration.
 func (f *HTTPFilter) Do(ctx context.Context, responseNode pipeline.ResponseNode, request *http.Request) error {
 	if f.FilterOptions.Background {
 		return f.executeBackground(ctx, responseNode, request)
@@ -68,11 +50,6 @@ func (f *HTTPFilter) Do(ctx context.Context, responseNode pipeline.ResponseNode,
 	return f.executeForeground(ctx, responseNode, request)
 }
 
-// ============================================================================
-// Foreground Execution
-// ============================================================================
-
-// executeForeground performs a synchronous HTTP request and processes the response.
 func (f *HTTPFilter) executeForeground(ctx context.Context, responseNode pipeline.ResponseNode, request *http.Request) error {
 	httpResponse, err := performHTTPRequest(ctx, f.targetURL, request)
 	if err != nil {
@@ -88,14 +65,9 @@ func (f *HTTPFilter) executeForeground(ctx context.Context, responseNode pipelin
 		return f.handleError(ctx, responseNode.Set(response), request, httpErr)
 	}
 
-	return f.Next().Do(ctx, responseNode.Set(response), request)
+	return f.handleNext(ctx, responseNode.Set(response), request)
 }
 
-// ============================================================================
-// Background Execution
-// ============================================================================
-
-// executeBackground performs an asynchronous HTTP request using goroutines.
 func (f *HTTPFilter) executeBackground(ctx context.Context, responseNode pipeline.ResponseNode, request *http.Request) error {
 	resultChannel := make(chan any)
 	ctx = context.WithValue(ctx, pipeline.BackgroundFilterId(f.Id()), resultChannel)
@@ -124,32 +96,27 @@ func (f *HTTPFilter) executeBackground(ctx context.Context, responseNode pipelin
 	}()
 
 	// Continue immediately to next filter without waiting
-	return f.Next().Do(ctx, responseNode, request)
+	return f.handleNext(ctx, responseNode, request)
 }
 
-// ============================================================================
-// Helper Methods
-// ============================================================================
-
-// handleError processes errors by joining them with the failure filter's result.
 func (f *HTTPFilter) handleError(ctx context.Context, responseNode pipeline.ResponseNode, request *http.Request, err error) error {
 	if f.Fail() == nil {
 		return err
 	}
-	failureErr := f.Fail().Do(ctx, responseNode, request)
-	return errors.Join(err, failureErr)
+	return errors.Join(err, f.Fail().Do(ctx, responseNode, request))
 }
 
-// ============================================================================
-// HTTP Utilities
-// ============================================================================
+func (f *HTTPFilter) handleNext(ctx context.Context, responseNode pipeline.ResponseNode, request *http.Request) error {
+	if f.Next() == nil {
+		return nil
+	}
+	return f.Next().Do(ctx, responseNode, request)
+}
 
-// newHTTPError creates a formatted error for HTTP request failures.
 func newHTTPError(url string, statusCode int) error {
 	return fmt.Errorf("HTTP request to %s failed with status %d", url, statusCode)
 }
 
-// performHTTPRequest executes an HTTP request to the specified URL.
 func performHTTPRequest(ctx context.Context, targetURL *url.URL, originalRequest *http.Request) (*http.Response, error) {
 	// Clone the request to avoid modifying the original
 	clonedRequest := originalRequest.Clone(ctx)
@@ -159,7 +126,6 @@ func performHTTPRequest(ctx context.Context, targetURL *url.URL, originalRequest
 	return http.DefaultClient.Do(clonedRequest)
 }
 
-// isSuccessStatusCode checks if the HTTP status code indicates success (2xx range).
 func isSuccessStatusCode(statusCode int) bool {
 	return statusCode >= 200 && statusCode < 300
 }
