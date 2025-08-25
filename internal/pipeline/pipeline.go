@@ -19,6 +19,7 @@ package pipeline
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"time"
@@ -38,6 +39,7 @@ type ResponseNode interface {
 	Next() ResponseNode
 	Current() *Response
 	Set(rs *Response) ResponseNode
+	Clone() ResponseNode
 }
 
 type Filter interface {
@@ -47,8 +49,7 @@ type Filter interface {
 }
 
 type FilterOptions struct {
-	Background bool
-	Timeout    time.Duration
+	Timeout time.Duration
 }
 
 type FilterOption func(*FilterOptions)
@@ -92,6 +93,11 @@ func (r *responseNode) Set(rs *Response) ResponseNode {
 	return r.next
 }
 
+func (r *responseNode) Clone() ResponseNode {
+	v := *r
+	return &v
+}
+
 func (f *AbstractFilter) Id() string {
 	return f.FilterId
 }
@@ -114,6 +120,20 @@ func (f *AbstractFilter) Fail() Filter {
 
 func (f *AbstractFilter) Next() Filter {
 	return f.onNext
+}
+
+func (f *AbstractFilter) HandleError(ctx context.Context, responseNode ResponseNode, request *http.Request, err error) error {
+	if f.Fail() == nil {
+		return err
+	}
+	return errors.Join(err, f.Fail().Do(ctx, responseNode, request))
+}
+
+func (f *AbstractFilter) HandleNext(ctx context.Context, responseNode ResponseNode, request *http.Request) error {
+	if f.Next() == nil {
+		return nil
+	}
+	return f.Next().Do(ctx, responseNode, request)
 }
 
 func ToResponse(rs http.Response) (*Response, error) {

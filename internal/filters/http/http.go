@@ -16,7 +16,6 @@ package http
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -35,7 +34,6 @@ func New(id string, targetURL *url.URL, previousFilter pipeline.Filter, opts ...
 	filter.targetURL = targetURL
 	filter.Previous = previousFilter
 
-	// Apply configuration options
 	for _, opt := range opts {
 		opt(&filter.FilterOptions)
 	}
@@ -44,73 +42,21 @@ func New(id string, targetURL *url.URL, previousFilter pipeline.Filter, opts ...
 }
 
 func (f *HTTPFilter) Do(ctx context.Context, responseNode pipeline.ResponseNode, request *http.Request) error {
-	if f.FilterOptions.Background {
-		return f.executeBackground(ctx, responseNode, request)
-	}
-	return f.executeForeground(ctx, responseNode, request)
-}
-
-func (f *HTTPFilter) executeForeground(ctx context.Context, responseNode pipeline.ResponseNode, request *http.Request) error {
 	httpResponse, err := performHTTPRequest(ctx, f.targetURL, request)
 	if err != nil {
-		return f.handleError(ctx, responseNode, request, err)
+		return f.HandleError(ctx, responseNode, request, err)
 	}
 	response, err := pipeline.ToResponse(*httpResponse)
 	if err != nil {
-		return f.handleError(ctx, responseNode, request, err)
+		return f.HandleError(ctx, responseNode, request, err)
 	}
 
 	if !isSuccessStatusCode(response.StatusCode) {
 		httpErr := newHTTPError(f.targetURL.String(), httpResponse.StatusCode)
-		return f.handleError(ctx, responseNode.Set(response), request, httpErr)
+		return f.HandleError(ctx, responseNode.Set(response), request, httpErr)
 	}
 
-	return f.handleNext(ctx, responseNode.Set(response), request)
-}
-
-func (f *HTTPFilter) executeBackground(ctx context.Context, responseNode pipeline.ResponseNode, request *http.Request) error {
-	resultChannel := make(chan any)
-	ctx = context.WithValue(ctx, pipeline.BackgroundFilterId(f.Id()), resultChannel)
-
-	// Execute HTTP request in background
-	go func() {
-		httpResponse, err := performHTTPRequest(ctx, f.targetURL, request)
-		if err != nil {
-			resultChannel <- f.handleError(ctx, responseNode, request, err)
-			return
-		}
-		response, err := pipeline.ToResponse(*httpResponse)
-		if err != nil {
-			resultChannel <- f.handleError(ctx, responseNode, request, err)
-			return
-		}
-
-		if !isSuccessStatusCode(response.StatusCode) {
-			httpErr := newHTTPError(f.targetURL.String(), httpResponse.StatusCode)
-			resultChannel <- f.handleError(ctx, responseNode, request, httpErr)
-			return
-		}
-
-		// Send the new response node to the channel
-		resultChannel <- responseNode.Set(response)
-	}()
-
-	// Continue immediately to next filter without waiting
-	return f.handleNext(ctx, responseNode, request)
-}
-
-func (f *HTTPFilter) handleError(ctx context.Context, responseNode pipeline.ResponseNode, request *http.Request, err error) error {
-	if f.Fail() == nil {
-		return err
-	}
-	return errors.Join(err, f.Fail().Do(ctx, responseNode, request))
-}
-
-func (f *HTTPFilter) handleNext(ctx context.Context, responseNode pipeline.ResponseNode, request *http.Request) error {
-	if f.Next() == nil {
-		return nil
-	}
-	return f.Next().Do(ctx, responseNode, request)
+	return f.HandleNext(ctx, responseNode.Set(response), request)
 }
 
 func newHTTPError(url string, statusCode int) error {
@@ -118,10 +64,9 @@ func newHTTPError(url string, statusCode int) error {
 }
 
 func performHTTPRequest(ctx context.Context, targetURL *url.URL, originalRequest *http.Request) (*http.Response, error) {
-	// Clone the request to avoid modifying the original
 	clonedRequest := originalRequest.Clone(ctx)
 	clonedRequest.URL = targetURL
-	clonedRequest.RequestURI = "" // Clear RequestURI for client requests
+	clonedRequest.RequestURI = ""
 
 	return http.DefaultClient.Do(clonedRequest)
 }
