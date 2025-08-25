@@ -1,2 +1,4 @@
 github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
 github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
+github.com/vedadiyan/exql v0.0.0-20250822080224-4ac4bc823f1a h1:OTn7GgYiiy0gsHbH8vw3Yk2OHLvanwYVrswl3nybVcE=
+github.com/vedadiyan/exql v0.0.0-20250822080224-4ac4bc823f1a/go.mod h1:Aa11v3lgsIcbQiANlkT0jWmoRmy6CawxG4K28IThlTs=
