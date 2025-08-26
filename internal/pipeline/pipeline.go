@@ -150,6 +150,20 @@ func (f *FilterWrapper) Handler(fn func(context.Context, ResponseNode, *http.Req
 	f.do = fn
 }
 
+func (f *FilterWrapper) PreviousFilter(ctx context.Context) Filter {
+	if filter := ctx.Value(CONTEXT_PREV); filter != nil {
+		return filter.(Filter)
+	}
+	return nil
+}
+
+func (f *FilterWrapper) PreviousError(ctx context.Context) error {
+	if filter := ctx.Value(CONTEXT_ERR); filter != nil {
+		return filter.(error)
+	}
+	return nil
+}
+
 func ToResponse(rs http.Response) (*Response, error) {
 	body, err := io.ReadAll(rs.Body)
 	if err != nil {
