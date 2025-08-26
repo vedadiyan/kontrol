@@ -25,7 +25,14 @@ func (server *Server) HandleFunc(pattern string, logic pipeline.Filter) {
 			log.Println(err)
 		}
 
-		for next := response.Next(); next != nil && next.Current() != nil; {
+		for {
+			next := response.Next()
+			if next == nil {
+				break
+			}
+			if next.Current() != nil {
+				break
+			}
 			response = next
 		}
 
