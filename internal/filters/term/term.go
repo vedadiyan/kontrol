@@ -9,13 +9,13 @@ import (
 
 type (
 	Term struct {
-		pipeline.AbstractFilter
+		pipeline.FilterWrapper
 	}
 )
 
 func New(f pipeline.Filter) *Term {
 	out := new(Term)
-	out.Previous = f
+	out.Handler(out.Do)
 	return out
 }
 

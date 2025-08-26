@@ -45,7 +45,6 @@ type ResponseNode interface {
 }
 
 type Filter interface {
-	Prev() Filter
 	Do(context.Context, ResponseNode, *http.Request) error
 	Id() string
 }
@@ -56,11 +55,11 @@ type FilterOptions struct {
 
 type FilterOption func(*FilterOptions)
 
-type AbstractFilter struct {
+type FilterWrapper struct {
 	Filter
 	FilterOptions
 	FilterId string
-	Previous Filter
+	do       func(context.Context, ResponseNode, *http.Request) error
 	onFail   Filter
 	onNext   Filter
 }
@@ -72,7 +71,8 @@ type responseNode struct {
 }
 
 const (
-	CONTEXT_ERR ContextKey = "error"
+	CONTEXT_ERR  ContextKey = "error"
+	CONTEXT_PREV ContextKey = "previous"
 )
 
 func DefaultResponseNode(r *Response) ResponseNode {
@@ -104,31 +104,34 @@ func (r *responseNode) Clone() ResponseNode {
 	return &v
 }
 
-func (f *AbstractFilter) Id() string {
+func (f *FilterWrapper) Id() string {
 	return f.FilterId
 }
 
-func (f *AbstractFilter) Prev() Filter {
-	return f.Previous
-}
-
-func (f *AbstractFilter) OnFail(l Filter) {
+func (f *FilterWrapper) OnFail(l Filter) Filter {
 	f.onFail = l
+	return f
 }
 
-func (f *AbstractFilter) OnNext(l Filter) {
+func (f *FilterWrapper) OnNext(l Filter) Filter {
 	f.onNext = l
+	return f
 }
 
-func (f *AbstractFilter) Fail() Filter {
+func (f *FilterWrapper) Fail() Filter {
 	return f.onFail
 }
 
-func (f *AbstractFilter) Next() Filter {
+func (f *FilterWrapper) Next() Filter {
 	return f.onNext
 }
 
-func (f *AbstractFilter) HandleError(ctx context.Context, responseNode ResponseNode, request *http.Request, err error) error {
+func (f *FilterWrapper) Do(ctx context.Context, rs ResponseNode, rq *http.Request) error {
+	ctx = context.WithValue(ctx, CONTEXT_PREV, f)
+	return f.do(ctx, rs, rq)
+}
+
+func (f *FilterWrapper) HandleError(ctx context.Context, responseNode ResponseNode, request *http.Request, err error) error {
 	if f.Fail() == nil {
 		return err
 	}
@@ -136,11 +139,15 @@ func (f *AbstractFilter) HandleError(ctx context.Context, responseNode ResponseN
 	return errors.Join(err, f.Fail().Do(ctx, responseNode, request))
 }
 
-func (f *AbstractFilter) HandleNext(ctx context.Context, responseNode ResponseNode, request *http.Request) error {
+func (f *FilterWrapper) HandleNext(ctx context.Context, responseNode ResponseNode, request *http.Request) error {
 	if f.Next() == nil {
 		return nil
 	}
 	return f.Next().Do(ctx, responseNode, request)
+}
+
+func (f *FilterWrapper) Handler(fn func(context.Context, ResponseNode, *http.Request) error) {
+	f.do = fn
 }
 
 func ToResponse(rs http.Response) (*Response, error) {

@@ -22,15 +22,15 @@ import (
 )
 
 type BackgroundFilter struct {
-	pipeline.AbstractFilter
+	pipeline.FilterWrapper
 	Filter pipeline.Filter
 }
 
-func New(id string, wrappedFilter pipeline.Filter, previousFilter pipeline.Filter, opts ...pipeline.FilterOption) *BackgroundFilter {
+func New(id string, wrappedFilter pipeline.Filter, opts ...pipeline.FilterOption) *BackgroundFilter {
 	filter := new(BackgroundFilter)
 	filter.FilterId = id
 	filter.Filter = wrappedFilter
-	filter.Previous = previousFilter
+	filter.Handler(filter.Do)
 
 	for _, opt := range opts {
 		opt(&filter.FilterOptions)

@@ -24,15 +24,15 @@ import (
 )
 
 type HTTPFilter struct {
-	pipeline.AbstractFilter
+	pipeline.FilterWrapper
 	targetURL *url.URL // The target URL for HTTP requests
 }
 
-func New(id string, targetURL *url.URL, previousFilter pipeline.Filter, opts ...pipeline.FilterOption) *HTTPFilter {
+func New(id string, targetURL *url.URL, opts ...pipeline.FilterOption) *HTTPFilter {
 	filter := new(HTTPFilter)
 	filter.FilterId = id
 	filter.targetURL = targetURL
-	filter.Previous = previousFilter
+	filter.Handler(filter.Do)
 
 	for _, opt := range opts {
 		opt(&filter.FilterOptions)

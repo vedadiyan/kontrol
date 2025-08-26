@@ -24,18 +24,18 @@ import (
 )
 
 type InspectorFilter struct {
-	pipeline.AbstractFilter
+	pipeline.FilterWrapper
 	Query string
 }
 
 type Context struct {
 }
 
-func New(id string, query string, previousFilter pipeline.Filter, opts ...pipeline.FilterOption) *InspectorFilter {
+func New(id string, query string, opts ...pipeline.FilterOption) *InspectorFilter {
 	filter := new(InspectorFilter)
 	filter.FilterId = id
 	filter.Query = query
-	filter.Previous = previousFilter
+	filter.Handler(filter.Do)
 
 	for _, opt := range opts {
 		opt(&filter.FilterOptions)

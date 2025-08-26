@@ -15,9 +15,9 @@ func main() {
 	if err != nil {
 		log.Fatalln(err)
 	}
-	filter := http.New("test", url, nil)
-	filter.OnNext(term.New(filter))
-	filter.OnFail(term.New(filter))
+	filter := http.New("test", url)
+	filter.OnNext(http.New("test2", url).OnNext(term.New(filter)))
+	filter.OnFail(http.New("test2", url).OnNext(term.New(filter)))
 
 	server := new(server.Server)
 	server.HandleFunc("/test", filter)
