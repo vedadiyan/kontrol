@@ -25,6 +25,8 @@ import (
 	"time"
 )
 
+type ContextKey string
+
 type BackgroundFilterId string
 
 type Response struct {
@@ -68,6 +70,10 @@ type responseNode struct {
 	next     ResponseNode
 	current  *Response
 }
+
+const (
+	CONTEXT_ERR ContextKey = "error"
+)
 
 func DefaultResponseNode(r *Response) ResponseNode {
 	out := new(responseNode)
@@ -126,6 +132,7 @@ func (f *AbstractFilter) HandleError(ctx context.Context, responseNode ResponseN
 	if f.Fail() == nil {
 		return err
 	}
+	ctx = context.WithValue(ctx, CONTEXT_ERR, err)
 	return errors.Join(err, f.Fail().Do(ctx, responseNode, request))
 }
 
