@@ -15,6 +15,7 @@
 package inspector
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -22,6 +23,7 @@ import (
 
 	"github.com/vedadiyan/exql"
 	"github.com/vedadiyan/exql/lang"
+	_http "github.com/vedadiyan/exql/lib/http"
 	"github.com/vedadiyan/kontrol/internal/pipeline"
 )
 
@@ -48,7 +50,7 @@ func New(id string, query string, opts ...pipeline.FilterOption) *InspectorFilte
 }
 
 func (f *InspectorFilter) Do(ctx context.Context, responseNode pipeline.ResponseNode, request *http.Request) error {
-	result, err := f.expr.Evaluate(exql.NewDefaultContext())
+	result, err := f.expr.Evaluate(createContext(responseNode, request))
 	if err != nil {
 		return f.HandleError(ctx, responseNode, request, err)
 	}
@@ -62,31 +64,15 @@ func (f *InspectorFilter) Do(ctx context.Context, responseNode pipeline.Response
 	return f.HandleNext(ctx, responseNode, request)
 }
 
-func createContext(response pipeline.ResponseNode, request *http.Request) exql.DefaultContext {
+func createContext(response pipeline.ResponseNode, request *http.Request) lang.Context {
 	ctx := exql.NewDefaultContext()
-	rs := exql.NewDefaultContext()
-	rs.SetVariable("body", response.Current().Body)
-	rs.SetVariable("headers", response.Current().Header)
-	rs.SetVariable("statusCode", response.Current().StatusCode)
-	rs.SetVariable("trailers", response.Current().Trailer)
-	rq := exql.NewDefaultContext()
-	body, err := request.GetBody()
-	if err != nil {
-	}
-	data, err := io.ReadAll(body)
-	if err != nil {
-	}
-	rq.SetVariable("body", data)
-	rq.SetVariable("headers", request.Header)
-	rq.SetVariable("host", request.Host)
-	rq.SetVariable("method", request.Method)
-	rq.SetVariable("pattern", request.Pattern)
-	rq.SetVariable("form", request.PostForm)
-	rq.SetVariable("protoMajor", request.ProtoMajor)
-	rq.SetVariable("protoMinor", request.ProtoMinor)
-	rq.SetVariable("remoteAddr", request.RemoteAddr)
-	rq.SetVariable("trailer", request.Trailer)
-	rq.SetVariable("transferEncoding", request.TransferEncoding)
-	rq.SetVariable("url", request.URL)
-	return *ctx
+	currentResponse := response.Current()
+	res := new(http.Response)
+	res.Body = io.NopCloser(bytes.NewBuffer(currentResponse.Body))
+	res.StatusCode = currentResponse.StatusCode
+	res.Header = currentResponse.Header
+	res.Trailer = currentResponse.Trailer
+	ctx.SetVariable("request", _http.New(request))
+	ctx.SetVariable("response", _http.New(res))
+	return ctx
 }
