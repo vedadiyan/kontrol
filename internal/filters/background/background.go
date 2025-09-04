@@ -40,12 +40,17 @@ func New(id string, wrappedFilter pipeline.Filter, opts ...pipeline.FilterOption
 }
 
 func (f *BackgroundFilter) Do(ctx context.Context, responseNode pipeline.ResponseNode, request *http.Request) error {
-	go func() {
-		clone := responseNode.Clone()
-		bgCtx := context.WithoutCancel(ctx)
-		if err := f.Filter.Do(bgCtx, clone, request); err != nil {
-			_ = f.HandleError(bgCtx, responseNode, request, err)
+	clone := responseNode.Clone()
+	bgCtx := context.WithoutCancel(ctx)
+	go func(ctx context.Context, clone pipeline.ResponseNode) {
+		err := f.Filter.Do(ctx, clone, request)
+		if f, ok := f.Filter.(*pipeline.FilterWrapper); ok {
+			if err != nil {
+				_ = f.HandleError(bgCtx, responseNode, request, err)
+				return
+			}
+			_ = f.HandleNext(ctx, responseNode, request)
 		}
-	}()
+	}(bgCtx, clone)
 	return f.HandleNext(ctx, responseNode, request)
 }
