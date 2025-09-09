@@ -32,7 +32,7 @@ func New(id string, targetURL *url.URL, opts ...pipeline.FilterOption) *HTTPFilt
 	filter := new(HTTPFilter)
 	filter.FilterId = id
 	filter.targetURL = targetURL
-	filter.Handler(filter.Do)
+	filter.Handler(filter.do)
 
 	for _, opt := range opts {
 		opt(&filter.FilterOptions)
@@ -41,7 +41,7 @@ func New(id string, targetURL *url.URL, opts ...pipeline.FilterOption) *HTTPFilt
 	return filter
 }
 
-func (f *HTTPFilter) Do(ctx context.Context, responseNode pipeline.ResponseNode, request *http.Request) error {
+func (f *HTTPFilter) do(ctx context.Context, responseNode pipeline.ResponseNode, request *http.Request) error {
 	httpResponse, err := performHTTPRequest(ctx, f.targetURL, request)
 	if err != nil {
 		return f.HandleError(ctx, responseNode, request, err)

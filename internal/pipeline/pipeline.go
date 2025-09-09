@@ -36,6 +36,14 @@ type Response struct {
 	Trailer    http.Header // HTTP response trailers
 }
 
+type Nexter interface {
+	Next() Filter
+}
+
+type Failer interface {
+	Fail() Filter
+}
+
 type ResponseNode interface {
 	Prev() ResponseNode
 	Next() ResponseNode

@@ -36,6 +36,7 @@ func (server *Server) HandleFunc(pattern string, logic pipeline.Filter) {
 			response = next
 		}
 
+		w.WriteHeader(response.Current().StatusCode)
 		response.Current().Header.Write(w)
 		response.Current().Trailer.Write(w)
 		w.Write(response.Current().Body)

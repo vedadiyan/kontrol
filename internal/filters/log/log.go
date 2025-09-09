@@ -40,7 +40,7 @@ func New(id string, query string, opts ...pipeline.FilterOption) *LogFilter {
 		panic(err)
 	}
 	filter.expr = expr
-	filter.Handler(filter.Do)
+	filter.Handler(filter.do)
 
 	for _, opt := range opts {
 		opt(&filter.FilterOptions)
@@ -49,7 +49,7 @@ func New(id string, query string, opts ...pipeline.FilterOption) *LogFilter {
 	return filter
 }
 
-func (f *LogFilter) Do(ctx context.Context, responseNode pipeline.ResponseNode, request *http.Request) error {
+func (f *LogFilter) do(ctx context.Context, responseNode pipeline.ResponseNode, request *http.Request) error {
 	result, err := f.expr.Evaluate(createContext(responseNode, request))
 	switch err {
 	case nil:

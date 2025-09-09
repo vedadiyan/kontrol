@@ -13,12 +13,12 @@ type (
 	}
 )
 
-func New(f pipeline.Filter) *Term {
+func New() *Term {
 	out := new(Term)
-	out.Handler(out.Do)
+	out.Handler(out.do)
 	return out
 }
 
-func (h *Term) Do(ctx context.Context, rs pipeline.ResponseNode, rq *http.Request) error {
+func (h *Term) do(ctx context.Context, rs pipeline.ResponseNode, rq *http.Request) error {
 	return nil
 }

@@ -33,7 +33,7 @@ func New(id string, body []byte, statusCode int, headers http.Header, trailers h
 	filter := new(InjectFilter)
 	filter.FilterId = id
 
-	filter.Handler(filter.Do)
+	filter.Handler(filter.do)
 
 	filter.body = body
 	filter.statusCode = statusCode
@@ -47,7 +47,7 @@ func New(id string, body []byte, statusCode int, headers http.Header, trailers h
 	return filter
 }
 
-func (f *InjectFilter) Do(ctx context.Context, responseNode pipeline.ResponseNode, request *http.Request) error {
+func (f *InjectFilter) do(ctx context.Context, responseNode pipeline.ResponseNode, request *http.Request) error {
 	current := responseNode.Current()
 	if f.body != nil {
 		current.Body = f.body
