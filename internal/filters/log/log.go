@@ -17,6 +17,7 @@ package log
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -50,7 +51,7 @@ func New(id string, query string, opts ...pipeline.FilterOption) *LogFilter {
 }
 
 func (f *LogFilter) do(ctx context.Context, responseNode pipeline.ResponseNode, request *http.Request) error {
-	result, err := f.expr.Evaluate(createContext(responseNode, request))
+	result, err := f.expr.Evaluate(createContext(ctx, responseNode, request))
 	switch err {
 	case nil:
 		{
@@ -65,15 +66,21 @@ func (f *LogFilter) do(ctx context.Context, responseNode pipeline.ResponseNode, 
 	return f.HandleNext(ctx, responseNode, request)
 }
 
-func createContext(response pipeline.ResponseNode, request *http.Request) lang.Context {
-	ctx := exql.NewDefaultContext(exql.WithBuiltInLibrary())
+func createContext(ctx context.Context, response pipeline.ResponseNode, request *http.Request) lang.Context {
+	_ctx := exql.NewDefaultContext(exql.WithBuiltInLibrary(), exql.WithFunctions(
+		map[string]lang.Function{
+			"contextKey": func(args []lang.Value) (lang.Value, error) {
+				return lang.StringValue(fmt.Sprintf("%v", ctx.Value(pipeline.ContextKey(fmt.Sprintf("%v", args[0]))))), nil
+			},
+		},
+	))
 	currentResponse := response.Current()
 	res := new(http.Response)
 	res.Body = io.NopCloser(bytes.NewBuffer(currentResponse.Body))
 	res.StatusCode = currentResponse.StatusCode
 	res.Header = currentResponse.Header
 	res.Trailer = currentResponse.Trailer
-	ctx.SetVariable("request", _http.New(request))
-	ctx.SetVariable("response", _http.New(res))
-	return ctx
+	_ctx.SetVariable("request", _http.New(request))
+	_ctx.SetVariable("response", _http.New(res))
+	return _ctx
 }
