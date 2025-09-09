@@ -66,7 +66,7 @@ func (f *LogFilter) do(ctx context.Context, responseNode pipeline.ResponseNode, 
 }
 
 func createContext(response pipeline.ResponseNode, request *http.Request) lang.Context {
-	ctx := exql.NewDefaultContext()
+	ctx := exql.NewDefaultContext(exql.WithBuiltInLibrary())
 	currentResponse := response.Current()
 	res := new(http.Response)
 	res.Body = io.NopCloser(bytes.NewBuffer(currentResponse.Body))
