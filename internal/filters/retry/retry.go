@@ -46,7 +46,7 @@ func New(id string, internal time.Duration, max int, opts ...pipeline.FilterOpti
 }
 
 func (f *RetryFilter) do(ctx context.Context, responseNode pipeline.ResponseNode, request *http.Request) error {
-	n := increment(&ctx)
+	n := increment(&ctx, f.Id())
 	if n == f.max {
 		return f.HandleError(ctx, responseNode, request, fmt.Errorf("failed with maximum retries"))
 	}
@@ -55,13 +55,14 @@ func (f *RetryFilter) do(ctx context.Context, responseNode pipeline.ResponseNode
 	return prev.Do(ctx, responseNode, request)
 }
 
-func increment(ctx *context.Context) int {
-	n := (*ctx).Value(pipeline.ContextKey("retry-counter"))
+func increment(ctx *context.Context, id string) int {
+	key := fmt.Sprintf("%s-retry-counter", id)
+	n := (*ctx).Value(pipeline.ContextKey(key))
 	if n == nil {
-		*ctx = context.WithValue(*ctx, pipeline.ContextKey("retry-counter"), 1)
+		*ctx = context.WithValue(*ctx, pipeline.ContextKey(key), 1)
 		return 1
 	}
 	_n := n.(int) + 1
-	*ctx = context.WithValue(*ctx, pipeline.ContextKey("retry-counter"), _n)
+	*ctx = context.WithValue(*ctx, pipeline.ContextKey(key), _n)
 	return _n
 }
