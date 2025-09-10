@@ -25,6 +25,8 @@ import (
 
 type RetryFilter struct {
 	pipeline.FilterWrapper
+	pipeline.ChainerWrapper
+	pipeline.FailerWrapper
 	interval time.Duration
 	max      int
 }
@@ -37,6 +39,8 @@ func New(id string, internal time.Duration, max int, opts ...pipeline.FilterOpti
 	filter.max = max
 
 	filter.Handler(filter.do)
+	filter.ChainerWrapper.Filter = filter
+	filter.FailerWrapper.Filter = filter
 
 	for _, opt := range opts {
 		opt(&filter.FilterOptions)

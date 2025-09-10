@@ -23,6 +23,7 @@ import (
 
 type InjectFilter struct {
 	pipeline.FilterWrapper
+	pipeline.ChainerWrapper
 	body       []byte
 	statusCode int
 	headers    http.Header
@@ -34,6 +35,7 @@ func New(id string, body []byte, statusCode int, headers http.Header, trailers h
 	filter.FilterId = id
 
 	filter.Handler(filter.do)
+	filter.ChainerWrapper.Filter = filter
 
 	filter.body = body
 	filter.statusCode = statusCode

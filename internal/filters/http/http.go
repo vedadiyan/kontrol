@@ -25,6 +25,8 @@ import (
 
 type HTTPFilter struct {
 	pipeline.FilterWrapper
+	pipeline.ChainerWrapper
+	pipeline.FailerWrapper
 	targetURL *url.URL // The target URL for HTTP requests
 }
 
@@ -33,6 +35,8 @@ func New(id string, targetURL *url.URL, opts ...pipeline.FilterOption) *HTTPFilt
 	filter.FilterId = id
 	filter.targetURL = targetURL
 	filter.Handler(filter.do)
+	filter.ChainerWrapper.Filter = filter
+	filter.FailerWrapper.Filter = filter
 
 	for _, opt := range opts {
 		opt(&filter.FilterOptions)

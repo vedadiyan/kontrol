@@ -36,7 +36,7 @@ type Response struct {
 	Trailer    http.Header // HTTP response trailers
 }
 
-type Nexter interface {
+type Chainer interface {
 	Next() Filter
 }
 
@@ -68,8 +68,16 @@ type FilterWrapper struct {
 	FilterOptions
 	FilterId string
 	do       func(context.Context, ResponseNode, *http.Request) error
-	onFail   Filter
-	onNext   Filter
+}
+
+type ChainerWrapper struct {
+	Filter
+	onNext Filter
+}
+
+type FailerWrapper struct {
+	Filter
+	onFail Filter
 }
 
 type responseNode struct {
@@ -116,21 +124,21 @@ func (f *FilterWrapper) Id() string {
 	return f.FilterId
 }
 
-func (f *FilterWrapper) OnFail(l Filter) Filter {
+func (f *FailerWrapper) OnFail(l Filter) Filter {
 	f.onFail = l
 	return f
 }
 
-func (f *FilterWrapper) OnNext(l Filter) Filter {
+func (f *ChainerWrapper) OnNext(l Filter) Filter {
 	f.onNext = l
 	return f
 }
 
-func (f *FilterWrapper) Fail() Filter {
+func (f *FailerWrapper) Fail() Filter {
 	return f.onFail
 }
 
-func (f *FilterWrapper) Next() Filter {
+func (f *ChainerWrapper) Next() Filter {
 	return f.onNext
 }
 
@@ -139,15 +147,16 @@ func (f *FilterWrapper) Do(ctx context.Context, rs ResponseNode, rq *http.Reques
 	return f.do(ctx, rs, rq)
 }
 
-func (f *FilterWrapper) HandleError(ctx context.Context, responseNode ResponseNode, request *http.Request, err error) error {
-	if f.Fail() == nil {
+func (f *FailerWrapper) HandleError(ctx context.Context, responseNode ResponseNode, request *http.Request, err error) error {
+	_f := f.Fail()
+	if _f == nil {
 		return err
 	}
 	ctx = context.WithValue(ctx, CONTEXT_ERR, err)
-	return errors.Join(err, f.Fail().Do(ctx, responseNode, request))
+	return errors.Join(err, _f.Do(ctx, responseNode, request))
 }
 
-func (f *FilterWrapper) HandleNext(ctx context.Context, responseNode ResponseNode, request *http.Request) error {
+func (f *ChainerWrapper) HandleNext(ctx context.Context, responseNode ResponseNode, request *http.Request) error {
 	if f.Next() == nil {
 		return nil
 	}

@@ -29,6 +29,8 @@ import (
 
 type InspectorFilter struct {
 	pipeline.FilterWrapper
+	pipeline.ChainerWrapper
+	pipeline.FailerWrapper
 	expr lang.ExprNode
 }
 
@@ -41,6 +43,8 @@ func New(id string, query string, opts ...pipeline.FilterOption) *InspectorFilte
 	}
 	filter.expr = expr
 	filter.Handler(filter.do)
+	filter.ChainerWrapper.Filter = filter
+	filter.FailerWrapper.Filter = filter
 
 	for _, opt := range opts {
 		opt(&filter.FilterOptions)

@@ -23,14 +23,15 @@ import (
 
 type BackgroundFilter struct {
 	pipeline.FilterWrapper
+	pipeline.ChainerWrapper
 	Filter pipeline.Filter
 }
 
 func New(id string, wrappedFilter pipeline.Filter, opts ...pipeline.FilterOption) *BackgroundFilter {
 	filter := new(BackgroundFilter)
 	filter.FilterId = id
-	filter.Filter = wrappedFilter
 	filter.Handler(filter.Do)
+	filter.ChainerWrapper.Filter = filter
 
 	for _, opt := range opts {
 		opt(&filter.FilterOptions)
@@ -44,12 +45,16 @@ func (f *BackgroundFilter) Do(ctx context.Context, responseNode pipeline.Respons
 	bgCtx := context.WithoutCancel(ctx)
 	go func(ctx context.Context, clone pipeline.ResponseNode) {
 		err := f.Filter.Do(ctx, clone, request)
-		if f, ok := f.Filter.(*pipeline.FilterWrapper); ok {
-			if err != nil {
+		if err != nil {
+			if f, ok := f.Filter.(*pipeline.FailerWrapper); ok {
 				_ = f.HandleError(bgCtx, responseNode, request, err)
 				return
 			}
+			return
+		}
+		if f, ok := f.Filter.(*pipeline.ChainerWrapper); ok {
 			_ = f.HandleNext(ctx, responseNode, request)
+			return
 		}
 	}(bgCtx, clone)
 	return f.HandleNext(ctx, responseNode, request)

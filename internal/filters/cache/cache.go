@@ -37,6 +37,8 @@ type Cache interface {
 
 type GetCacheFilter struct {
 	pipeline.FilterWrapper
+	pipeline.ChainerWrapper
+	pipeline.FailerWrapper
 	expr  lang.ExprNode
 	cache Cache
 	ttl   time.Duration
@@ -71,6 +73,8 @@ func New(id string, cacheType CacheType, key string, cache Cache, ttl time.Durat
 			panic("unexpected cache type value")
 		}
 	}
+	filter.ChainerWrapper.Filter = filter
+	filter.FailerWrapper.Filter = filter
 
 	for _, opt := range opts {
 		opt(&filter.FilterOptions)

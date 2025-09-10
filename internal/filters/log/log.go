@@ -30,6 +30,7 @@ import (
 
 type LogFilter struct {
 	pipeline.FilterWrapper
+	pipeline.ChainerWrapper
 	expr lang.ExprNode
 }
 
@@ -42,6 +43,7 @@ func New(id string, query string, opts ...pipeline.FilterOption) *LogFilter {
 	}
 	filter.expr = expr
 	filter.Handler(filter.do)
+	filter.ChainerWrapper.Filter = filter
 
 	for _, opt := range opts {
 		opt(&filter.FilterOptions)
