@@ -21,20 +21,27 @@ import (
 	"github.com/vedadiyan/kontrol/internal/pipeline"
 )
 
+type options struct {
+	pipeline.FilterOption
+}
+
 type BackgroundFilter struct {
 	pipeline.FilterWrapper
 	pipeline.ChainerWrapper
-	Filter pipeline.Filter
+	Filter  pipeline.Filter
+	options options
 }
 
-func New(id string, wrappedFilter pipeline.Filter, opts ...pipeline.FilterOption) *BackgroundFilter {
+type Option func(*options)
+
+func New(id string, wrappedFilter pipeline.Filter, opts ...Option) *BackgroundFilter {
 	filter := new(BackgroundFilter)
 	filter.FilterId = id
 	filter.Handler(filter.Do)
 	filter.ChainerWrapper.Filter = filter
 
 	for _, opt := range opts {
-		opt(&filter.FilterOptions)
+		opt(&filter.options)
 	}
 
 	return filter

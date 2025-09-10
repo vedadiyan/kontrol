@@ -35,21 +35,28 @@ type Cache interface {
 	Set(key string, value *pipeline.Response, ttl time.Duration) error
 }
 
+type options struct {
+	pipeline.FilterOption
+	ttl time.Duration
+}
+
 type GetCacheFilter struct {
 	pipeline.FilterWrapper
 	pipeline.ChainerWrapper
 	pipeline.FailerWrapper
-	expr  lang.ExprNode
-	cache Cache
-	ttl   time.Duration
+	expr    lang.ExprNode
+	cache   Cache
+	options options
 }
+
+type Option func(*options)
 
 const (
 	CACHE_GET CacheType = iota
 	CACHE_SET
 )
 
-func New(id string, cacheType CacheType, key string, cache Cache, ttl time.Duration, opts ...pipeline.FilterOption) *GetCacheFilter {
+func New(id string, cacheType CacheType, key string, cache Cache, ttl time.Duration, opts ...Option) *GetCacheFilter {
 	filter := new(GetCacheFilter)
 	filter.FilterId = id
 	expr, err := exql.Parse(key)
@@ -58,7 +65,6 @@ func New(id string, cacheType CacheType, key string, cache Cache, ttl time.Durat
 	}
 	filter.expr = expr
 	filter.cache = cache
-	filter.ttl = ttl
 	switch cacheType {
 	case CACHE_GET:
 		{
@@ -77,7 +83,7 @@ func New(id string, cacheType CacheType, key string, cache Cache, ttl time.Durat
 	filter.FailerWrapper.Filter = filter
 
 	for _, opt := range opts {
-		opt(&filter.FilterOptions)
+		opt(&filter.options)
 	}
 
 	return filter
@@ -100,7 +106,7 @@ func (f *GetCacheFilter) set(ctx context.Context, responseNode pipeline.Response
 	if err != nil {
 		return f.HandleError(ctx, responseNode, request, err)
 	}
-	err = f.cache.Set(fmt.Sprintf("%v", result), responseNode.Current(), f.ttl)
+	err = f.cache.Set(fmt.Sprintf("%v", result), responseNode.Current(), f.options.ttl)
 	if err != nil {
 		return f.HandleError(ctx, responseNode, request, err)
 	}

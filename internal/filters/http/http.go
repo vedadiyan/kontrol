@@ -23,14 +23,21 @@ import (
 	"github.com/vedadiyan/kontrol/internal/pipeline"
 )
 
+type options struct {
+	pipeline.FilterOption
+}
+
 type HTTPFilter struct {
 	pipeline.FilterWrapper
 	pipeline.ChainerWrapper
 	pipeline.FailerWrapper
 	targetURL *url.URL // The target URL for HTTP requests
+	options   options
 }
 
-func New(id string, targetURL *url.URL, opts ...pipeline.FilterOption) *HTTPFilter {
+type Option func(*options)
+
+func New(id string, targetURL *url.URL, opts ...Option) *HTTPFilter {
 	filter := new(HTTPFilter)
 	filter.FilterId = id
 	filter.targetURL = targetURL
@@ -39,7 +46,7 @@ func New(id string, targetURL *url.URL, opts ...pipeline.FilterOption) *HTTPFilt
 	filter.FailerWrapper.Filter = filter
 
 	for _, opt := range opts {
-		opt(&filter.FilterOptions)
+		opt(&filter.options)
 	}
 
 	return filter

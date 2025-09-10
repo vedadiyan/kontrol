@@ -21,6 +21,10 @@ import (
 	"github.com/vedadiyan/kontrol/internal/pipeline"
 )
 
+type options struct {
+	pipeline.FilterOption
+}
+
 type InjectFilter struct {
 	pipeline.FilterWrapper
 	pipeline.ChainerWrapper
@@ -28,9 +32,12 @@ type InjectFilter struct {
 	statusCode int
 	headers    http.Header
 	trailers   http.Header
+	options    options
 }
 
-func New(id string, body []byte, statusCode int, headers http.Header, trailers http.Header, opts ...pipeline.FilterOption) *InjectFilter {
+type Option func(*options)
+
+func New(id string, body []byte, statusCode int, headers http.Header, trailers http.Header, opts ...Option) *InjectFilter {
 	filter := new(InjectFilter)
 	filter.FilterId = id
 
@@ -43,7 +50,7 @@ func New(id string, body []byte, statusCode int, headers http.Header, trailers h
 	filter.trailers = trailers
 
 	for _, opt := range opts {
-		opt(&filter.FilterOptions)
+		opt(&filter.options)
 	}
 
 	return filter

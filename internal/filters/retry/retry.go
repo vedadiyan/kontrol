@@ -23,15 +23,22 @@ import (
 	"github.com/vedadiyan/kontrol/internal/pipeline"
 )
 
+type options struct {
+	pipeline.FilterOption
+}
+
 type RetryFilter struct {
 	pipeline.FilterWrapper
 	pipeline.ChainerWrapper
 	pipeline.FailerWrapper
 	interval time.Duration
 	max      int
+	options  options
 }
 
-func New(id string, internal time.Duration, max int, opts ...pipeline.FilterOption) *RetryFilter {
+type Option func(*options)
+
+func New(id string, internal time.Duration, max int, opts ...Option) *RetryFilter {
 	filter := new(RetryFilter)
 	filter.FilterId = id
 
@@ -43,7 +50,7 @@ func New(id string, internal time.Duration, max int, opts ...pipeline.FilterOpti
 	filter.FailerWrapper.Filter = filter
 
 	for _, opt := range opts {
-		opt(&filter.FilterOptions)
+		opt(&filter.options)
 	}
 
 	return filter

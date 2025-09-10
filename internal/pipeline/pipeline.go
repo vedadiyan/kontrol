@@ -65,7 +65,6 @@ type FilterOption func(*FilterOptions)
 
 type FilterWrapper struct {
 	Filter
-	FilterOptions
 	FilterId string
 	do       func(context.Context, ResponseNode, *http.Request) error
 }

@@ -28,13 +28,20 @@ import (
 	"github.com/vedadiyan/kontrol/internal/pipeline"
 )
 
+type options struct {
+	pipeline.FilterOption
+}
+
 type LogFilter struct {
 	pipeline.FilterWrapper
 	pipeline.ChainerWrapper
-	expr lang.ExprNode
+	expr    lang.ExprNode
+	options options
 }
 
-func New(id string, query string, opts ...pipeline.FilterOption) *LogFilter {
+type Option func(*options)
+
+func New(id string, query string, opts ...Option) *LogFilter {
 	filter := new(LogFilter)
 	filter.FilterId = id
 	expr, err := exql.Parse(query)
@@ -46,7 +53,7 @@ func New(id string, query string, opts ...pipeline.FilterOption) *LogFilter {
 	filter.ChainerWrapper.Filter = filter
 
 	for _, opt := range opts {
-		opt(&filter.FilterOptions)
+		opt(&filter.options)
 	}
 
 	return filter
