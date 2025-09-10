@@ -23,31 +23,26 @@ import (
 
 type options struct {
 	pipeline.FilterOption
+	body       []byte
+	statusCode int
+	headers    http.Header
+	trailers   http.Header
 }
 
 type InjectFilter struct {
 	pipeline.FilterWrapper
 	pipeline.ChainerWrapper
-	body       []byte
-	statusCode int
-	headers    http.Header
-	trailers   http.Header
-	options    options
+	options options
 }
 
 type Option func(*options)
 
-func New(id string, body []byte, statusCode int, headers http.Header, trailers http.Header, opts ...Option) *InjectFilter {
+func New(id string, opts ...Option) *InjectFilter {
 	filter := new(InjectFilter)
 	filter.FilterId = id
 
 	filter.Handler(filter.do)
 	filter.ChainerWrapper.Filter = filter
-
-	filter.body = body
-	filter.statusCode = statusCode
-	filter.headers = headers
-	filter.trailers = trailers
 
 	for _, opt := range opts {
 		opt(&filter.options)
@@ -58,17 +53,17 @@ func New(id string, body []byte, statusCode int, headers http.Header, trailers h
 
 func (f *InjectFilter) do(ctx context.Context, responseNode pipeline.ResponseNode, request *http.Request) error {
 	current := responseNode.Current()
-	if f.body != nil {
-		current.Body = f.body
+	if f.options.body != nil {
+		current.Body = f.options.body
 	}
-	if f.statusCode != 0 {
-		current.StatusCode = f.statusCode
+	if f.options.statusCode != 0 {
+		current.StatusCode = f.options.statusCode
 	}
-	if f.headers != nil {
-		current.Header = f.headers
+	if f.options.headers != nil {
+		current.Header = f.options.headers
 	}
-	if f.trailers != nil {
-		current.Trailer = f.trailers
+	if f.options.trailers != nil {
+		current.Trailer = f.options.trailers
 	}
 	return f.HandleNext(ctx, responseNode, request)
 }

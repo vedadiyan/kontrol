@@ -20,7 +20,7 @@ func main() {
 	}
 	filter := http.New("test", url)
 	filter.OnNext(http.New("test2", url).OnNext(term.New()))
-	filter.OnFail(retry.New("retry", time.Second, 5).OnFail(inject.New("inject", []byte("Internal Server Error"), 500, nil, nil).OnNext(term.New())))
+	filter.OnFail(retry.New("retry", time.Second, 5).OnFail(inject.New("inject").OnNext(term.New())))
 
 	server := new(server.Server)
 	server.HandleFunc("/test", filter)
