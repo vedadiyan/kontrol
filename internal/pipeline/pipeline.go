@@ -70,12 +70,12 @@ type FilterWrapper struct {
 }
 
 type ChainerWrapper struct {
-	Filter
+	Filter Filter
 	onNext Filter
 }
 
 type FailerWrapper struct {
-	Filter
+	Filter Filter
 	onFail Filter
 }
 
@@ -125,12 +125,12 @@ func (f *FilterWrapper) Id() string {
 
 func (f *FailerWrapper) OnFail(l Filter) Filter {
 	f.onFail = l
-	return f
+	return f.Filter
 }
 
 func (f *ChainerWrapper) OnNext(l Filter) Filter {
 	f.onNext = l
-	return f
+	return f.Filter
 }
 
 func (f *FailerWrapper) Fail() Filter {

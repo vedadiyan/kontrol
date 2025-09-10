@@ -53,14 +53,15 @@ func (f *BackgroundFilter) Do(ctx context.Context, responseNode pipeline.Respons
 	go func(ctx context.Context, clone pipeline.ResponseNode) {
 		err := f.Filter.Do(ctx, clone, request)
 		if err != nil {
-			if f, ok := f.Filter.(*pipeline.FailerWrapper); ok {
-				_ = f.HandleError(bgCtx, responseNode, request, err)
+			if f, ok := f.Filter.(pipeline.Failer); ok {
+				bgCtx = context.WithValue(bgCtx, pipeline.CONTEXT_ERR, err)
+				_ = f.Fail().Do(bgCtx, responseNode, request)
 				return
 			}
 			return
 		}
-		if f, ok := f.Filter.(*pipeline.ChainerWrapper); ok {
-			_ = f.HandleNext(ctx, responseNode, request)
+		if f, ok := f.Filter.(pipeline.Chainer); ok {
+			_ = f.Next().Do(ctx, responseNode, request)
 			return
 		}
 	}(bgCtx, clone)
